@@ -1757,6 +1757,10 @@ body.curtain::after {
   display: grid;
   gap: 6px;
 }
+.text.after {
+  margin-top: 36px;
+  padding-bottom: 0;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

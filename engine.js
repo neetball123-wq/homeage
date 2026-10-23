@@ -1319,8 +1319,10 @@
 
     pageEl.innerHTML =
       `<article class="scene${p.special ? ' sp-' + p.special : ''}${ui.type ? ' ui-' + ui.type : ''}">` +
-      `<div class="text">${lines.map((l, i) => lineHtml(l, i, counter)).join('')}</div>` +
-      `<div class="act" style="--n:${Math.min(lines.length, MAX_STAGGER)}">${act}</div>` +
+      (p.special === 'kiroku'
+        ? `<div class="act">${act}</div><div class="text after">${lines.map((l, i) => lineHtml(l, i, counter)).join('')}</div>`
+        : `<div class="text">${lines.map((l, i) => lineHtml(l, i, counter)).join('')}</div>` +
+          `<div class="act" style="--n:${Math.min(lines.length, MAX_STAGGER)}">${act}</div>`) +
       '</article>';
     crumbEl.textContent = fill(p.place || '', false);
     badge(false);
@@ -1391,6 +1393,7 @@
   Object.defineProperty(debug, 'state', { get: () => state });
   debug.pages = pages;
   debug.stories = stories;
+  debug.go = (id) => goPage(id);
 
   /* ---- はじめに ---- */
 

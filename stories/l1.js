@@ -657,7 +657,9 @@ place: ウキシズの島 ＞ 雲の上
 @4「よーし！ 母ちゃんのぶんまで楽しむぞ！」
 と言って、また浮かびはじめた。
 
-@2おばあさんだけが、ずっと重そうだった。
+おばあさんだけが、ずっと重そうだった。
+@2「あんた、ぶら下がってたね。これ持っときな。重くなりたいときに使うといい」
+get: おもし石
 * 雲のほうへ行く -> @kazeyomi | log=雲のほうへ流れていった。
 `);
 
@@ -737,7 +739,7 @@ place: ナガナの村 ＞ 長老の家
 # naming
 place: ナガナの村 ＞ 長老の家
 赤ちゃんが、こっちをじっと見ている。
-ui: input label=赤ちゃんの名前 max=30 lens=4,12 live={n}文字、{n}年 submit=名付ける name=baby to=babynamed empty=babynone log=赤ちゃんに「{{baby}}」と名付けた。 emptyLog=赤ちゃんの名前を、つけなかった。
+ui: input label=赤ちゃんの名前 max=30 lens=4,12 live={n}文字、{n}年 submit=名付ける name=baby set=baby_named to=babynamed empty=babynone log=赤ちゃんに「{{baby}}」と名付けた。 emptyLog=赤ちゃんの名前を、つけなかった。
 
 # babynamed
 place: ナガナの村 ＞ 長老の家
@@ -1231,8 +1233,9 @@ place: ウシロメの道 ＞ 分かれ道
 ?lied 遠くの小さな木の下で、だれかが笑っている声がした。
 
 日がかたむいてきた。
-片方の道は夜のほうへ、片方は風の吹くほうへのびていた。
-ui: swipe card=どっちへ行く？
+道が三つにのびていた。夜のほうへ、風の吹くほうへ、それから、影の長くのびるほうへ。
+ui: buttons label=どっちへ行く？
 * 夜のほうへ -> @negoto | log=夜のほうへ歩いた。
 * 風のほうへ -> @kazeyomi | log=風のほうへ歩いた。
+* 影の長いほうへ -> @kagenui | log=影の長くのびるほうへ歩いた。
 `);
