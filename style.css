@@ -1,0 +1,307 @@
+/* 一枚もののホームページ。中央に白い箱、区切りは hr、フォーム部品はブラウザ標準のまま使う。 */
+:root {
+  --bg: #e7e9ec;
+  --box: #ffffff;
+  --fg: #1b1c1f;
+  --muted: #646a73;
+  --line: #a7adb6;
+  --hr-hi: #ffffff;
+  --link: #0b3fd1;
+  --visited: #5a2a92;
+  --alert: #c0281f;
+  --font: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101113;
+    --box: #1a1b1e;
+    --fg: #e4e4e1;
+    --muted: #9ca2ab;
+    --line: #4a4f57;
+    --hr-hi: #2a2c30;
+    --link: #8db1ff;
+    --visited: #c39cef;
+    --alert: #ff8b80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101113;
+  --box: #1a1b1e;
+  --fg: #e4e4e1;
+  --muted: #9ca2ab;
+  --line: #4a4f57;
+  --hr-hi: #2a2c30;
+  --link: #8db1ff;
+  --visited: #c39cef;
+  --alert: #ff8b80;
+  color-scheme: dark;
+}
+
+html {
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  line-height: 1.9;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.box {
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--box);
+  border: 1px solid var(--line);
+  padding: 14px clamp(16px, 4vw, 36px) 16px;
+}
+
+.site {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.site-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--fg);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--hr-hi);
+  margin: 10px 0;
+}
+
+main {
+  padding-block: 22px 10px;
+  min-height: 50vh;
+}
+
+a {
+  color: var(--link);
+}
+a:visited {
+  color: var(--visited);
+}
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+/* 1行ずつ、大きさと配置を変えられる */
+.ln {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.gap {
+  height: 1.9em;
+}
+.left {
+  text-align: left;
+}
+.center {
+  text-align: center;
+}
+.right {
+  text-align: right;
+}
+.s1 {
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+.s2 {
+  font-size: 0.82rem;
+}
+.s3 {
+  font-size: 1rem;
+}
+.s4 {
+  font-size: 1.25rem;
+  line-height: 1.7;
+}
+.s5 {
+  font-size: 1.6rem;
+  line-height: 1.5;
+}
+.s6 {
+  font-size: 2.1rem;
+  line-height: 1.4;
+}
+.s7 {
+  font-size: 3.2rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.sway {
+  display: inline-block;
+  animation: sway 2.4s ease-in-out infinite;
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: translateX(-0.7em);
+  }
+  50% {
+    transform: translateX(0.7em);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sway {
+    animation: none;
+  }
+}
+
+/* 選択肢。部品はブラウザの見た目をそのまま使う */
+.ui {
+  margin: 2em 0 0;
+  text-align: center;
+}
+button,
+select,
+input[type="text"] {
+  font: inherit;
+  font-size: 1rem;
+}
+button {
+  padding: 0.3em 1.2em;
+  cursor: pointer;
+}
+select {
+  padding: 0.25em 0.4em;
+  max-width: 100%;
+}
+input[type="text"] {
+  padding: 0.3em 0.5em;
+  width: min(14em, 100%);
+}
+.ui-label {
+  margin-right: 0.5em;
+}
+.ui-links {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+.ui-links a {
+  display: inline-block;
+  padding-block: 4px;
+}
+.ui-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.ui-split {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ui-split a {
+  padding-block: 4px;
+}
+fieldset {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding: 8px 18px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+legend {
+  padding: 0 0.4em;
+  font-size: 0.9rem;
+}
+.ui-radio label,
+.ui-check label {
+  display: block;
+  padding: 4px 0;
+  cursor: pointer;
+}
+input[type="radio"],
+input[type="checkbox"] {
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.5em 0 0;
+  vertical-align: -0.12em;
+}
+.ui-err {
+  margin: 0.5em 0 0;
+  font-size: 0.85rem;
+  color: var(--alert);
+}
+
+.ref {
+  font-size: 0.72rem;
+  text-decoration: none;
+  vertical-align: 0.35em;
+  margin-left: 1px;
+}
+.redirect {
+  margin: 1.6em 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--alert);
+}
+.redirect .sec {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.notes {
+  margin-top: 2.6em;
+  font-size: 0.8rem;
+  line-height: 1.75;
+  color: var(--muted);
+}
+.notes ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.notes .mark {
+  margin-right: 0.5em;
+}
+
+.kiroku h1 {
+  margin: 0 0 0.6em;
+  font-size: 1.25rem;
+  text-align: center;
+}
+.kiroku h2 {
+  margin: 1.4em 0 0.2em;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.kiroku ol,
+.kiroku ul {
+  margin: 0;
+  padding-left: 1.5em;
+  font-size: 0.95rem;
+}
+
+.foot {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
