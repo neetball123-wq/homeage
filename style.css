@@ -16,6 +16,9 @@
   --hill: #e3e0d6;
   --mask: rgb(28 28 31 / 0.96);
   --shade: rgb(16 16 20 / 0.5);
+  --night: #141417;
+  --on-night: #efede7;
+  --glow: rgb(255 248 230 / 0.22);
   --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -40,6 +43,9 @@
     --hill: #242428;
     --mask: rgb(5 5 7 / 0.96);
     --shade: rgb(0 0 0 / 0.65);
+    --night: #050506;
+    --on-night: #e9e7e1;
+    --glow: rgb(255 248 230 / 0.16);
     color-scheme: dark;
   }
 }
@@ -60,6 +66,9 @@
   --hill: #242428;
   --mask: rgb(5 5 7 / 0.96);
   --shade: rgb(0 0 0 / 0.65);
+  --night: #050506;
+  --on-night: #e9e7e1;
+  --glow: rgb(255 248 230 / 0.16);
   color-scheme: dark;
 }
 
@@ -758,7 +767,7 @@ button {
 }
 .dz-row {
   display: grid;
-  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 14px;
   width: 100%;
 }
@@ -1455,6 +1464,298 @@ button {
     opacity: 0;
     translate: -50% 18px;
   }
+}
+
+/* ---- 文字の動き（本文に <span class="…"> で書く） ---- */
+.float {
+  display: inline-block;
+  animation: float 2.6s ease-in-out infinite;
+}
+@keyframes float {
+  50% {
+    translate: 0 -0.35em;
+  }
+}
+.sink {
+  display: inline-block;
+  animation: sink 1.6s var(--ease) both;
+}
+@keyframes sink {
+  from {
+    translate: 0 -0.8em;
+    opacity: 0.4;
+  }
+}
+.fade {
+  animation: fadeout 3s ease-in both;
+}
+@keyframes fadeout {
+  to {
+    opacity: 0.15;
+  }
+}
+.marquee {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee > span {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee 9s linear infinite;
+}
+@keyframes marquee {
+  to {
+    translate: -100% 0;
+  }
+}
+
+/* ---- はじまり ---- */
+.w-boot {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding-top: 6vh;
+}
+.boot-n {
+  margin: 0;
+  font: 800 clamp(3.4rem, 18vw, 6rem) / 1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.boot-n small {
+  margin-left: 0.1em;
+  font-size: 0.35em;
+  font-weight: 600;
+  color: var(--muted);
+}
+.boot-bar {
+  width: min(100%, 320px);
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+.boot-bar i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+.boot-live {
+  margin: 0;
+  min-height: 1.6em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.boot-hold {
+  width: 116px;
+  height: 116px;
+}
+body.curtain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--ink);
+  pointer-events: none;
+  animation: curtain 1.4s var(--ease) both;
+}
+@keyframes curtain {
+  0% {
+    clip-path: inset(100% 0 0 0);
+  }
+  42%,
+  58% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+/* 暗い中に、行き先が隠れている */
+.w-field {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  max-height: 64vh;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--night);
+  cursor: crosshair;
+  touch-action: none;
+  --x: 50%;
+  --y: 86%;
+}
+.fd-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at var(--x) var(--y), var(--glow) 0 40px, transparent 92px);
+}
+.fd-pt {
+  position: absolute;
+  translate: -50% -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: var(--on-night);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.7s;
+}
+.fd-pt.found {
+  opacity: 1;
+  pointer-events: auto;
+}
+.fd-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--on-night);
+  box-shadow: 0 0 14px 3px var(--glow);
+  animation: twinkle 2.4s ease-in-out infinite;
+}
+@keyframes twinkle {
+  50% {
+    scale: 0.6;
+    opacity: 0.6;
+  }
+}
+.fd-l {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.fd-pt:hover .fd-dot {
+  scale: 1.5;
+}
+.fd-pt.hit .fd-dot {
+  animation: hit 0.4s var(--spring);
+}
+
+/* ---- 旅の図ときろく ---- */
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 2px 0 4px;
+}
+.map-dot {
+  fill: var(--line-strong);
+}
+.map-dot.on {
+  fill: var(--accent);
+}
+.map-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw 1.8s var(--ease) 0.2s forwards;
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.map-t {
+  font: 600 3px var(--font);
+  fill: var(--ink);
+}
+.met {
+  margin: 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.met b {
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+.ways {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ways li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  animation: ln-in 0.45s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+.way-n {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+  font: 700 12px/1 var(--mono);
+}
+.way-t {
+  margin: 0;
+  font-weight: 700;
+}
+.way-t small {
+  margin-left: 0.6em;
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--muted);
+}
+.way-x {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+}
+.way-x::before {
+  content: "→ ";
+  color: var(--accent);
+}
+.way-or {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.way-not {
+  display: inline-block;
+  margin-right: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+.take {
+  margin: 0;
+  font-weight: 700;
+}
+.take small {
+  font-weight: 400;
+  color: var(--muted);
+}
+.card .sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.sp-kiroku .rec {
+  display: grid;
+  gap: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {

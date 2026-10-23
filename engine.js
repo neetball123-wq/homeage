@@ -1,14 +1,17 @@
-/* ページの表示と進行、さわって選ぶ部品。物語の中身は stories/ 以下に置く。 */
+/* ページの表示と進行、さわって選ぶ部品。物語の中身は stories/ 以下に置く（書き方は README.md）。 */
 (function () {
   'use strict';
 
-  const SAVE_KEY = 'homeage-save-v4';
-  const FIRST_PAGE = 'kushami.start';
+  const SAVE_KEY = 'homeage-save-v5';
+  const FIRST_PAGE = 'hajime.boot';
   const ALIGN = { '<': 'left', '^': 'center', '>': 'right' };
   const STEP = 70; // 1行ずつ出てくる間隔（ミリ秒）。style.css の --step と合わせる
   const MAX_STAGGER = 12; // これより後ろの行は、同時に出す
+  const LAYERS = 6; // 1回の旅で通る段の数
 
   const pages = {};
+  const stories = {};
+  const order = [];
   let state = null;
   let timer = 0;
   let paused = false;
@@ -17,11 +20,13 @@
   let toastTimer = 0;
   let pageEl = null;
   let crumbEl = null;
+  const debug = { fast: false };
 
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-  const still = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const still = () => debug.fast || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fine = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const plain = (s) => String(s).replace(/<[^>]+>/g, '');
 
   function later(fn, ms) {
     const id = setTimeout(fn, ms);
@@ -32,14 +37,131 @@
     off.push(() => el.removeEventListener(type, fn, opt));
   }
 
-  /* ---- 登録と保存 ---- */
+  /* ---- 短編の読みこみ ---- */
 
   function add(list) {
     for (const p of list) pages[p.id] = p;
   }
 
+  // 行き先の書き方：name（同じ短編のページ）、@kushami（その短編のはじめ）、@end（おわり）
+  function resolve(t, sid) {
+    if (!t || t === '@reset' || t.includes('.') || t === 'koujichu') return t;
+    if (t === '@end') return 'owari.start';
+    if (t.startsWith('@')) return t.slice(1) + '.start';
+    return `${sid}.${t}`;
+  }
+
+  // 「a=1 b=2 alt」を { a: '1', b: '2', alt: true } に
+  function kv(s) {
+    const o = {};
+    for (const tok of (s || '').trim().split(/\s+/).filter(Boolean)) {
+      const at = tok.indexOf('=');
+      if (at < 0) o[tok] = true;
+      else o[tok.slice(0, at)] = tok.slice(at + 1);
+    }
+    return o;
+  }
+  const flagsOf = (s) => Object.fromEntries(String(s).split(',').filter(Boolean).map((f) => [f, true]));
+
+  // 行頭の ?flag ?!flag ?+持ちもの ?-持ちもの
+  function condOf(line) {
+    const m = line.match(/^\?(!)?([+-])?([^\s]+)(?:\s(.*))?$/);
+    if (!m) return [null, line];
+    const [, neg, sign, key, rest] = m;
+    const cond = sign === '+' ? { need: key } : sign === '-' ? { without: key } : neg ? { unless: key } : { if: key };
+    return [cond, rest || ''];
+  }
+
+  function choiceOf(body, sid) {
+    const m = body.match(/^\*\s+(.+?)\s*->\s*(\S+)\s*(?:\|\s*(.*))?$/);
+    if (!m) throw new Error(`選択肢の書き方がちがいます: ${body}`);
+    const o = kv(m[3]);
+    const c = { text: m[1], to: resolve(m[2], sid) };
+    for (const k of ['log', 'get', 'lose', 'need', 'without', 'if', 'unless', 'shape', 'fx']) if (o[k]) c[k] = o[k];
+    if (o.set) c.set = flagsOf(o.set);
+    if (o.unset) c.unset = String(o.unset).split(',');
+    if (o.x) c.x = Number(o.x);
+    if (o.y) c.y = Number(o.y);
+    if (o.alt) c.alt = true;
+    if (o.clear) c.vars = Object.fromEntries(String(o.clear).split(',').map((k) => [k, '']));
+    return c;
+  }
+
+  function story(src) {
+    const meta = {};
+    const list = [];
+    let cur = null;
+    for (const raw of src.replace(/\r/g, '').split('\n')) {
+      const line = raw.trim();
+      if (line.startsWith('//')) continue;
+      if (line.startsWith('# ')) {
+        cur = { id: `${meta.id}.${line.slice(2).trim()}`, text: [], choices: [], notes: [] };
+        list.push(cur);
+        continue;
+      }
+      if (!cur) {
+        const m = line.match(/^(\w+):\s*(.*)$/);
+        if (m) meta[m[1]] = m[2];
+        continue;
+      }
+      const [cond, body] = condOf(line);
+      const sid = meta.id;
+      if (body.startsWith('* ')) {
+        cur.choices.push(Object.assign(choiceOf(body, sid), cond));
+        continue;
+      }
+      const mm = !cond && body.match(/^(place|log|get|lose|set|unset|var|note|ui|hide\*?|decor|timer|special|dynamic|next):\s?(.*)$/);
+      if (!mm) {
+        cur.text.push(cond ? Object.assign({ text: body }, cond) : body);
+        continue;
+      }
+      const [, key, val] = mm;
+      if (key === 'note') cur.notes.push(val);
+      else if (key === 'set') cur.set = flagsOf(val.replace(/\s+/g, ','));
+      else if (key === 'unset') cur.unset = val.split(/[\s,]+/);
+      else if (key === 'var') cur.vars = Object.assign(cur.vars || {}, kv(val));
+      else if (key === 'ui') {
+        const [type, ...rest] = val.split(/\s+/);
+        const o = kv(rest.join(' '));
+        if (o.steps) o.steps = String(o.steps).split(',').map(Number);
+        for (const k of ['count', 'max']) if (o[k]) o[k] = Number(o[k]);
+        if (o.set) o.set = flagsOf(o.set);
+        if (o.emptySet) o.emptySet = flagsOf(o.emptySet);
+        if (o.noneSet) o.noneSet = flagsOf(o.noneSet);
+        if (o.to) o.to = resolve(o.to, sid);
+        if (o.empty) o.empty = resolve(o.empty, sid);
+        cur.ui = Object.assign(cur.ui || {}, o, { type });
+      } else if (key === 'hide' || key === 'hide*' || key === 'decor') {
+        const parts = val.split(/\s+/);
+        const y = Number(parts.pop());
+        const x = Number(parts.pop());
+        const it = { text: parts.join(' '), x, y };
+        cur.ui = cur.ui || {};
+        if (key === 'decor') (cur.ui.decor = cur.ui.decor || []).push(it);
+        else (cur.ui.hidden = cur.ui.hidden || []).push(Object.assign(it, { key: key === 'hide*' }));
+      } else if (key === 'timer') {
+        const m = val.match(/^(\d+)\s*->\s*(\S+)\s*(?:\|\s*(.*))?$/);
+        const o = kv(m[3]);
+        cur.timer = { sec: Number(m[1]), to: resolve(m[2], sid) };
+        if (o.log) cur.timer.log = o.log;
+        if (o.label) cur.timer.label = o.label;
+        if (o.set) cur.timer.set = flagsOf(o.set);
+      } else if (key === 'next') cur.next = resolve(val, sid);
+      else cur[key] = val;
+    }
+    for (const p of list) {
+      while (p.text[0] === '') p.text.shift();
+      while (p.text[p.text.length - 1] === '') p.text.pop();
+      pages[p.id] = p;
+    }
+    stories[meta.id] = { id: meta.id, title: meta.title, species: meta.species, rule: meta.rule, layer: Number(meta.layer || 0) };
+    order.push(meta.id);
+  }
+
+  /* ---- 保存 ---- */
+
   function freshState() {
-    return { cur: FIRST_PAGE, flags: {}, vars: {}, log: [], items: [], seen: [] };
+    return { cur: FIRST_PAGE, flags: {}, vars: {}, log: [], items: [], seen: [], route: [], story: null };
   }
 
   function load() {
@@ -67,17 +189,22 @@
     return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   }
 
-  // { if: 'flag' } / { unless: 'flag' } のついた行や選択肢を出し分ける
+  // フラグと持ちもので、行や選択肢を出し分ける
   function visible(item) {
     if (!item || typeof item !== 'object') return true;
     if (item.if && !state.flags[item.if]) return false;
     if (item.unless && state.flags[item.unless]) return false;
+    if (item.need && !state.items.includes(item.need)) return false;
+    if (item.without && state.items.includes(item.without)) return false;
     return true;
   }
 
-  // {{名前}} を、プレイヤーが入力した文字に置きかえる
+  // {{名前}} や {{名前|なかったときの言葉}} を、入力された文字に置きかえる
   function fill(s, escape) {
-    return s.replace(/\{\{(\w+)\}\}/g, (m, k) => (escape ? esc(state.vars[k] || '') : state.vars[k] || ''));
+    return s.replace(/\{\{(\w+)(?:\|([^}]*))?\}\}/g, (m, k, d) => {
+      const v = state.vars[k] ? state.vars[k] : d || '';
+      return escape && state.vars[k] ? esc(v) : v;
+    });
   }
 
   // 行頭の記号。@1〜@7 文字の大きさ、< ^ > 左・中央・右、! 小石が落ちる、~ 砂がこぼれる、* ゆれる
@@ -174,6 +301,29 @@
     later(() => choose(c), still() ? 0 : ms);
   }
 
+  function submitChips(ui, picked) {
+    picked.forEach(apply);
+    if (picked.length) apply({ log: (ui.log || '').replace('{n}', picked.length) });
+    else apply({ log: ui.noneLog, set: ui.noneSet });
+    goPage(ui.to);
+  }
+
+  // 入れた文字の数も残す。ui.lens="3,8" なら 名前_s（3文字まで）、名前_m、名前_l のフラグが立つ
+  function submitInput(ui, text) {
+    if (text) {
+      const n = [...text].length;
+      const [a, b] = String(ui.lens || '3,8').split(',').map(Number);
+      state.vars[ui.name] = text;
+      state.vars[ui.name + '_n'] = String(n);
+      state.flags[`${ui.name}_${n <= a ? 's' : n <= b ? 'm' : 'l'}`] = true;
+      apply({ log: ui.log, set: ui.set });
+      goPage(ui.to);
+    } else {
+      apply({ log: ui.emptyLog, set: ui.emptySet });
+      goPage(ui.empty || ui.to);
+    }
+  }
+
   const label = (ui) => (ui.label ? `<p class="w-label">${ui.label}</p>` : '');
   const hint = (text) => (text ? `<p class="w-hint">${text}</p>` : '');
   const goBtn = (text, disabled) =>
@@ -235,7 +385,6 @@
       listen(go, 'click', (e) => sel >= 0 && pick(list[sel], go, e));
     },
   };
-  W.radio = W.cards;
 
   // いくつでも選べる。選んだ数がボタンのバッジに出る
   W.chips = {
@@ -265,16 +414,10 @@
         busy = true;
         ripple(go, e);
         const picked = [...chosen].sort((a, b) => a - b).map((i) => list[i]);
-        later(() => {
-          picked.forEach(apply);
-          if (picked.length) apply({ log: (ui.log || '').replace('{n}', picked.length) });
-          else apply({ log: ui.noneLog, set: ui.noneSet });
-          goPage(ui.to);
-        }, still() ? 0 : 220);
+        later(() => submitChips(ui, picked), still() ? 0 : 220);
       });
     },
   };
-  W.check = W.chips;
 
   W.select = {
     html: (ui, list) =>
@@ -327,22 +470,16 @@
       const input = $('input', root);
       const live = $('.w-live', root);
       listen(input, 'input', () => {
-        live.textContent = input.value && ui.live ? ui.live : '';
-        live.classList.toggle('on', Boolean(input.value && ui.live));
+        const v = input.value;
+        const msg = ui.live ? ui.live.replace('{n}', [...v].length) : '';
+        live.textContent = v && msg ? msg : '';
+        live.classList.toggle('on', Boolean(v && msg));
       });
       listen(form, 'submit', (e) => {
         e.preventDefault();
         if (busy) return;
         busy = true;
-        const text = input.value.trim();
-        if (text) {
-          state.vars[ui.name] = text;
-          apply({ log: ui.log, set: ui.set });
-          goPage(ui.to);
-        } else {
-          apply({ log: ui.emptyLog, set: ui.emptySet });
-          goPage(ui.empty || ui.to);
-        }
+        submitInput(ui, input.value.trim());
       });
     },
   };
@@ -448,7 +585,7 @@
         const lv = level(s);
         if (live.dataset.lv !== String(lv)) {
           live.dataset.lv = String(lv);
-          live.textContent = list[lv].text;
+          live.textContent = plain(list[lv].text);
           bump(live);
         }
         raf = requestAnimationFrame(tick);
@@ -553,13 +690,12 @@
       sides.forEach((s) => listen(s, 'click', () => fly(s.dataset.i === '1' ? 1 : -1)));
     },
   };
-  W.split = W.swipe;
 
   // 押したまま左右にこする。ui.count 回こすると choices の1つめ
   W.rub = {
     html: (ui) =>
       '<div class="w-rub">' +
-      `<div class="rub-pad" tabindex="0" role="button" aria-label="${esc(ui.label)}"><span class="rub-l">${ui.label}</span><span class="rub-meter" aria-hidden="true"><i></i></span></div>` +
+      `<div class="rub-pad" tabindex="0" role="button" aria-label="${esc(plain(ui.label))}"><span class="rub-l">${ui.label}</span><span class="rub-meter" aria-hidden="true"><i></i></span></div>` +
       hint(ui.hint || '押したまま、左右に動かす') +
       '</div>',
     mount(root, ui, list) {
@@ -623,12 +759,51 @@
     },
   };
 
-  // 暗いところを、指やカーソルでなぞって見る。key のついたものを見つけるとボタンが押せる
+  // 暗いところを、なぞって照らす。spot と field で使う
+  function spotlight(box, onMove) {
+    let px = 0;
+    let py = 0;
+    const set = (x, y) => {
+      px = x;
+      py = y;
+      box.style.setProperty('--x', `${x}px`);
+      box.style.setProperty('--y', `${y}px`);
+      onMove(x, y);
+    };
+    const move = (e) => {
+      const r = box.getBoundingClientRect();
+      set(e.clientX - r.left, e.clientY - r.top);
+    };
+    listen(box, 'pointermove', move);
+    listen(box, 'pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      box.setPointerCapture(e.pointerId);
+      move(e);
+    });
+    listen(box, 'keydown', (e) => {
+      const d = { ArrowLeft: [-28, 0], ArrowRight: [28, 0], ArrowUp: [0, -28], ArrowDown: [0, 28] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      set(px + d[0], py + d[1]);
+    });
+    requestAnimationFrame(() => {
+      const r = box.getBoundingClientRect();
+      set(r.width * 0.5, r.height * 0.86);
+    });
+  }
+
+  const near = (box, el, x, y, d) => {
+    const r = box.getBoundingClientRect();
+    const ir = el.getBoundingClientRect();
+    return Math.hypot(ir.left + ir.width / 2 - r.left - x, ir.top + ir.height / 2 - r.top - y) < d;
+  };
+
+  // 暗い中をなぞってのぞく。key のついたものを見つけるとボタンが押せる
   W.spot = {
     html: (ui, list) =>
       `<div class="w-spot${ui.bg ? ' bg-' + ui.bg : ''}" tabindex="0" aria-label="${esc(ui.hint || 'なぞって見まわす')}">` +
       '<div class="spot-layer">' +
-      ui.hidden.map((h) => `<span class="spot-it${h.key ? ' key' : ''}" style="left:${h.x}%;top:${h.y}%">${h.text}</span>`).join('') +
+      (ui.hidden || []).map((h) => `<span class="spot-it${h.key ? ' key' : ''}" style="left:${h.x}%;top:${h.y}%">${h.text}</span>`).join('') +
       '</div><div class="spot-mask" aria-hidden="true"></div></div>' +
       hint(ui.hint || 'なぞって、見まわす') +
       goBtn(list[0].text, true),
@@ -636,44 +811,13 @@
       const box = $('.w-spot', root);
       const go = $('[data-go]', root);
       const items = $$('.spot-it', root);
-      let px = 0;
-      let py = 0;
-      const set = (x, y) => {
-        px = x;
-        py = y;
-        box.style.setProperty('--x', `${x}px`);
-        box.style.setProperty('--y', `${y}px`);
-        const r = box.getBoundingClientRect();
-        items.forEach((it) => {
-          const ir = it.getBoundingClientRect();
-          const cx = ir.left + ir.width / 2 - r.left;
-          const cy = ir.top + ir.height / 2 - r.top;
-          if (Math.hypot(cx - x, cy - y) < 70) it.classList.add('found');
-        });
+      spotlight(box, (x, y) => {
+        items.forEach((it) => near(box, it, x, y, 70) && it.classList.add('found'));
         const keys = items.filter((it) => it.classList.contains('key'));
         if (keys.length && keys.every((it) => it.classList.contains('found')) && go.disabled) {
           go.disabled = false;
           bump(go);
         }
-      };
-      const move = (e) => {
-        const r = box.getBoundingClientRect();
-        set(e.clientX - r.left, e.clientY - r.top);
-      };
-      listen(box, 'pointermove', move);
-      listen(box, 'pointerdown', (e) => {
-        box.setPointerCapture(e.pointerId);
-        move(e);
-      });
-      listen(box, 'keydown', (e) => {
-        const d = { ArrowLeft: [-28, 0], ArrowRight: [28, 0], ArrowUp: [0, -28], ArrowDown: [0, 28] }[e.key];
-        if (!d) return;
-        e.preventDefault();
-        set(px + d[0], py + d[1]);
-      });
-      requestAnimationFrame(() => {
-        const r = box.getBoundingClientRect();
-        set(r.width * 0.5, r.height * 0.86);
       });
       // なぞれない人のために、しばらくしたら押せるようにする
       later(() => {
@@ -681,6 +825,36 @@
       }, 9000);
       magnetic(go);
       listen(go, 'click', (e) => pick(list[0], go, e));
+    },
+  };
+
+  // 暗い中に、行き先がいくつか隠れている。照らして見つけたものを押す
+  W.field = {
+    html: (ui, list) =>
+      '<div class="w-field" tabindex="0">' +
+      '<div class="fd-mask" aria-hidden="true"></div>' +
+      list
+        .map((c, i) => `<button type="button" class="fd-pt" style="left:${c.x}%;top:${c.y}%" data-i="${i}" tabindex="-1"><span class="fd-dot" aria-hidden="true"></span><span class="fd-l">${c.text}</span></button>`)
+        .join('') +
+      '</div>' +
+      hint(ui.hint),
+    mount(root, ui, list) {
+      const box = $('.w-field', root);
+      const pts = $$('.fd-pt', root);
+      const show = (p) => {
+        if (p.classList.contains('found')) return;
+        p.classList.add('found');
+        p.tabIndex = 0;
+      };
+      spotlight(box, (x, y) => pts.forEach((p) => near(box, p, x, y, 64) && show(p)));
+      later(() => pts.forEach(show), 12000);
+      pts.forEach((p) =>
+        listen(p, 'click', () => {
+          if (!p.classList.contains('found')) return;
+          p.classList.add('hit');
+          pick(list[+p.dataset.i], null, null, 420);
+        })
+      );
     },
   };
 
@@ -705,6 +879,92 @@
           pick(list[+h.dataset.i], null, null, 300);
         })
       );
+    },
+  };
+
+  // はじまりの読みこみ。99% で止まって、長押しで100%になる
+  W.boot = {
+    html: (ui) =>
+      '<div class="w-boot">' +
+      '<p class="boot-n"><span data-n>0</span><small>%</small></p>' +
+      '<div class="boot-bar" aria-hidden="true"><i></i></div>' +
+      `<p class="boot-live" aria-live="polite">${ui.label || '読み込み中'}</p>` +
+      `<button type="button" class="hold-b boot-hold" hidden><svg class="ring" viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="54"/><circle class="ring-fg" cx="60" cy="60" r="54" pathLength="1"/></svg><span class="hold-l">${ui.hold || '長押し'}</span></button>` +
+      '</div>',
+    mount(root, ui, list) {
+      const n = $('[data-n]', root);
+      const bar = $('.boot-bar i', root);
+      const live = $('.boot-live', root);
+      const btn = $('.boot-hold', root);
+      const fg = $('.ring-fg', root);
+      let v = 0;
+      const show = (x) => {
+        n.textContent = x >= 100 ? '100' : x >= 99 ? x.toFixed(1) : String(Math.floor(x));
+        bar.style.width = `${Math.min(100, x)}%`;
+      };
+      const step = () => {
+        if (v >= 99) {
+          live.textContent = ui.stuck || '';
+          btn.hidden = false;
+          bump(btn);
+          return;
+        }
+        v = Math.min(99, v + (v < 30 ? 3 : v < 70 ? 1 + Math.round(Math.random() * 4) : v < 93 ? 1 : Math.random() < 0.5 ? 0 : 1));
+        show(v);
+        later(step, still() ? 0 : v > 90 ? 220 + Math.random() * 520 : 30 + Math.random() * 90);
+      };
+      later(step, still() ? 0 : 400);
+      let t0 = 0;
+      let raf = 0;
+      let on = false;
+      const need = 1.6;
+      const tick = () => {
+        const k = Math.min(1, (performance.now() - t0) / 1000 / need);
+        fg.style.strokeDashoffset = String(1 - k);
+        show(99 + k * 0.99);
+        if (k >= 1) {
+          on = false;
+          show(100);
+          document.body.classList.add('curtain');
+          setTimeout(() => document.body.classList.remove('curtain'), still() ? 0 : 1400);
+          pick(list[0], null, null, 700);
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      const start = (e) => {
+        if (on || busy) return;
+        on = true;
+        t0 = performance.now();
+        btn.classList.add('held');
+        if (e.pointerId !== undefined) btn.setPointerCapture(e.pointerId);
+        tick();
+      };
+      const stop = () => {
+        if (!on) return;
+        on = false;
+        cancelAnimationFrame(raf);
+        btn.classList.remove('held');
+        fg.style.strokeDashoffset = '1';
+        show(99);
+      };
+      listen(btn, 'pointerdown', (e) => {
+        e.preventDefault();
+        start(e);
+      });
+      listen(btn, 'pointerup', stop);
+      listen(btn, 'pointercancel', stop);
+      listen(btn, 'contextmenu', (e) => e.preventDefault());
+      listen(btn, 'keydown', (e) => {
+        if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
+          e.preventDefault();
+          start(e);
+        }
+      });
+      listen(btn, 'keyup', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') stop();
+      });
+      off.push(() => cancelAnimationFrame(raf));
     },
   };
 
@@ -814,17 +1074,62 @@
 
   /* ---- きろく ---- */
 
-  function recordHtml(title) {
+  // 50の短編を段ごとに並べて、通ってきた道だけを光らせる
+  function mapHtml() {
+    const rows = [];
+    for (let l = 1; l <= LAYERS; l++) rows.push(order.filter((id) => stories[id].layer === l));
+    const H = 14 + (LAYERS - 1) * 17 + 12;
+    const pos = {};
+    rows.forEach((ids, r) =>
+      ids.forEach((id, i) => {
+        pos[id] = [6 + (88 * (i + 0.5)) / ids.length, 12 + r * 17];
+      })
+    );
+    const route = state.route.map((x) => x.id).filter((id) => pos[id]);
+    const pts = route.map((id) => pos[id].join(',')).join(' ');
+    let svg = `<svg class="map" viewBox="0 0 100 ${H}" role="img" aria-label="通ってきた道">`;
+    if (route.length > 1) svg += `<polyline class="map-path" points="${pts}" pathLength="1"/>`;
+    for (const id of Object.keys(pos)) {
+      const [x, y] = pos[id];
+      const on = route.includes(id);
+      svg += `<circle class="map-dot${on ? ' on' : ''}" cx="${x}" cy="${y}" r="${on ? 2.1 : 1}"/>`;
+      if (on) svg += `<text class="map-t" x="${x}" y="${y + 5.6}" text-anchor="middle">${esc(stories[id].species)}</text>`;
+    }
+    return svg + '</svg>';
+  }
+
+  function recordHtml(full) {
+    const inRun = (id) => stories[id] && stories[id].layer >= 1 && stories[id].layer <= LAYERS;
+    const met = state.route.filter((r) => inRun(r.id));
+    const total = order.filter(inRun).length;
     const logs = state.log.length
       ? state.log.map((l, i) => `<li style="--i:${i}">${esc(l)}</li>`).join('')
       : '<li class="empty">まだ何も選んでいません。</li>';
     const items = state.items.length
       ? state.items.map((it) => `<span class="item">${esc(it)}</span>`).join('')
       : '<span class="none">なし</span>';
+    const ways = met
+      .map((r, i) => {
+        const st = stories[r.id];
+        const not = (r.others || []).map((o) => `<span class="way-not">${esc(o)}</span>`).join('');
+        return (
+          `<li style="--i:${i}"><span class="way-n">${i + 1}</span><div><p class="way-t">${esc(st.title)}<small>${esc(st.species)}</small></p>` +
+          (r.exit ? `<p class="way-x">${esc(r.exit)}${not ? `<span class="way-or">選ばなかった道</span>${not}` : ''}</p>` : '') +
+          '</div></li>'
+        );
+      })
+      .join('');
+    const take = full
+      ? `<h2 class="rec-sub">持って帰ったきまり</h2><p class="take">${state.vars.takehome ? `${esc(state.vars.takehome)}のきまり　<small>${esc(state.vars.takerule)}</small>` : 'なし'}</p>`
+      : '';
     return (
       '<div class="rec">' +
-      (title ? '<h1 class="rec-h">ここまでのきろく</h1>' : '') +
-      `<ol class="tl">${logs}</ol>` +
+      (full ? '<h1 class="rec-h">旅のきろく</h1>' : '') +
+      mapHtml() +
+      `<p class="met">出会った種族　<b>${met.length}</b> / ${total}</p>` +
+      (ways ? `<h2 class="rec-sub">通ってきた話</h2><ol class="ways">${ways}</ol>` : '') +
+      take +
+      `<h2 class="rec-sub">あなたが選んだこと</h2><ol class="tl">${logs}</ol>` +
       `<h2 class="rec-sub">持っているもの</h2><div class="items">${items}</div></div>`
     );
   }
@@ -886,6 +1191,13 @@
     if (!effects) return;
     if (effects.log) state.log.push(fill(effects.log, false));
     if (effects.set) Object.assign(state.flags, effects.set);
+    if (effects.unset) effects.unset.forEach((f) => delete state.flags[f]);
+    if (effects.vars) Object.assign(state.vars, effects.vars);
+    if (effects.lose && state.items.includes(effects.lose)) {
+      state.items = state.items.filter((it) => it !== effects.lose);
+      toast('手ばなした：' + effects.lose);
+      badge(true);
+    }
     if (effects.get && !state.items.includes(effects.get)) {
       state.items.push(effects.get);
       toast('持ちものに追加：' + effects.get);
@@ -895,17 +1207,40 @@
 
   function badge(jump) {
     const b = $('#badge');
+    if (!b) return;
     b.textContent = String(state.items.length);
     b.hidden = state.items.length === 0;
     if (jump) bump(b);
   }
 
+  // dynamic: rules は、通ってきた種族のきまりを選択肢にする
   function currentChoices() {
-    return (pages[state.cur].choices || []).filter(visible);
+    const p = pages[state.cur];
+    if (p.dynamic === 'rules') {
+      const list = state.route
+        .map((r) => stories[r.id])
+        .filter((st) => st && st.layer >= 1 && st.layer <= LAYERS)
+        .map((st) => ({
+          text: `${st.species}のきまり<small class="sub">${st.rule}</small>`,
+          to: p.next,
+          log: `${st.species}のきまりを、持って帰ることにした。`,
+          vars: { takehome: st.species, takerule: st.rule },
+          set: { took: true },
+        }));
+      list.push({ text: '何も持って帰らない', to: p.next, log: '何も持って帰らなかった。', vars: { takehome: '', takerule: '' } });
+      return list;
+    }
+    return (p.choices || []).filter(visible);
   }
 
   function enter(id) {
     state.cur = id;
+    const sid = id.split('.')[0];
+    if (sid !== state.story) {
+      state.story = sid;
+      const st = stories[sid];
+      if (st && st.layer >= 1 && st.layer <= LAYERS && !state.route.some((r) => r.id === sid)) state.route.push({ id: sid, exit: '', others: [] });
+    }
     if (!state.seen.includes(id)) {
       state.seen.push(id);
       apply(pages[id]);
@@ -919,7 +1254,17 @@
     } catch (e) {}
   }
 
+  // ほかの短編へ出ていくときは、選んだ道と選ばなかった道を残す
   function choose(c) {
+    const from = state.cur.split('.')[0];
+    const to = String(c.to).split('.')[0];
+    const r = state.route[state.route.length - 1];
+    if (to !== from && r && r.id === from) {
+      r.exit = plain(c.text);
+      r.others = currentChoices()
+        .filter((x) => x !== c && String(x.to).split('.')[0] !== from)
+        .map((x) => plain(x.text));
+    }
     apply(c);
     goPage(c.to);
   }
@@ -962,7 +1307,7 @@
     const main = list.filter((c) => !c.alt);
     const alt = list.filter((c) => c.alt);
     const ui = p.ui || {};
-    const type = W[ui.type] ? ui.type : 'links';
+    const type = W[ui.type] ? ui.type : p.dynamic === 'rules' ? 'cards' : 'links';
 
     let act = '';
     if (p.timer) act += timerHtml(p.timer, !main.length);
@@ -973,11 +1318,11 @@
     }
 
     pageEl.innerHTML =
-      '<article class="scene">' +
+      `<article class="scene${p.special ? ' sp-' + p.special : ''}${ui.type ? ' ui-' + ui.type : ''}">` +
       `<div class="text">${lines.map((l, i) => lineHtml(l, i, counter)).join('')}</div>` +
       `<div class="act" style="--n:${Math.min(lines.length, MAX_STAGGER)}">${act}</div>` +
       '</article>';
-    crumbEl.textContent = p.place || '';
+    crumbEl.textContent = fill(p.place || '', false);
     badge(false);
 
     const w = $('[data-w]', pageEl);
@@ -1007,6 +1352,45 @@
     drops();
     if (p.timer) later(() => startTimer(p.timer), still() ? 0 : Math.min(lines.length, MAX_STAGGER) * STEP + 400);
   }
+
+  /* ---- ためしに動かす（テスト用） ---- */
+
+  // 今のページで、ランダムに1つ選んで進める
+  debug.auto = function (rng = Math.random) {
+    const p = pages[state.cur];
+    const ui = p.ui || {};
+    const list = currentChoices();
+    const main = list.filter((c) => !c.alt);
+    stopTimer();
+    busy = false;
+    if (ui.type === 'input') {
+      submitInput(ui, rng() < 0.3 ? '' : 'テスト');
+      return 'input';
+    }
+    if (ui.type === 'chips') {
+      submitChips(ui, main.filter(() => rng() < 0.5));
+      return 'chips';
+    }
+    if (!list.length) {
+      if (p.timer) {
+        apply(p.timer);
+        goPage(p.timer.to);
+        return 'timer';
+      }
+      return 'stuck';
+    }
+    if (p.timer && rng() < 0.2) {
+      apply(p.timer);
+      goPage(p.timer.to);
+      return 'timer';
+    }
+    const c = list[Math.floor(rng() * list.length)];
+    choose(c);
+    return plain(c.text);
+  };
+  Object.defineProperty(debug, 'state', { get: () => state });
+  debug.pages = pages;
+  debug.stories = stories;
 
   /* ---- はじめに ---- */
 
@@ -1062,5 +1446,5 @@
     else start(hot && hot.data ? hot.data : {});
   }
 
-  window.HOMEAGE = { add, boot };
+  window.HOMEAGE = { add, story, boot, debug };
 })();
