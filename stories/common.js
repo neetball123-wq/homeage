@@ -2,12 +2,11 @@
 HOMEAGE.add([
   {
     id: 'koujichu',
-    place: '工事中',
+    place: 'この先',
     text: [
       '',
-      '@6工事中',
+      '@5この先は、まだ工事中です。',
       '',
-      'このページは現在工事中です。',
       'つづきの短編は、まだ書かれていません。',
     ],
     choices: [{ text: 'ここまでのきろくを見る', to: 'kiroku' }],
@@ -16,6 +15,7 @@ HOMEAGE.add([
     id: 'kiroku',
     place: 'きろく',
     special: 'kiroku',
+    ui: { type: 'buttons' },
     choices: [{ text: 'はじめから読む', to: '@reset' }],
   },
 ]);

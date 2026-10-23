@@ -4,22 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>（タイトル未定）</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="box">
-  <header class="site">
-    <span class="site-name">（タイトル未定）</span>
-    <span id="crumb"></span>
-  </header>
-  <hr>
-  <main id="page"></main>
-  <hr>
-  <footer class="foot">最終更新 2026/10/23</footer>
+<header class="top">
+  <div class="top-in">
+    <span class="logo">（タイトル未定）</span>
+    <span class="place" id="crumb"></span>
+    <button type="button" class="rec-b" id="rec-open">きろく<span class="badge" id="badge" hidden>0</span></button>
+  </div>
+</header>
+<main class="wrap"><div class="page" id="page"></div></main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-back" data-close-sheet></div>
+  <section class="sheet-panel" role="dialog" aria-modal="true" aria-label="きろく">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2>きろく</h2><button type="button" class="icon-b" data-close-sheet aria-label="閉じる">×</button></div>
+    <div class="sheet-body"></div>
+  </section>
 </div>
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="modal-t">
+    <p class="modal-t" id="modal-t">このページの有効期限は切れています</p>
+    <p class="modal-d">ブラウザの「戻る」では、前のページに戻れません。</p>
+    <button type="button" class="btn primary" id="modal-ok"><span>表示中のページへ</span></button>
+  </div>
+</div>
+<div class="pop" id="pop" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
 <script src="engine.js"></script>
 <script src="stories/common.js"></script>
 <script src="stories/kushami.js"></script>
