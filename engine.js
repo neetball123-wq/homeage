@@ -207,7 +207,8 @@
     });
   }
 
-  // 行頭の記号。@1〜@7 文字の大きさ、< ^ > 左・中央・右、! 小石が落ちる、~ 砂がこぼれる、* ゆれる
+  // 行頭の記号。@1〜@7 文字の大きさ、< ^ > 左から・中央・右から、! 小石が落ちる、~ 砂がこぼれる、* ゆれる
+  // 記号がなければ、ふつうの文は左寄せ、@5 より大きい文字は中央
   function lineHtml(raw, i, counter) {
     const m = raw.match(/^(?:@([1-7]))?([<^>](?![a-zA-Z/]))?([!~*]*)/);
     const body = raw.slice(m[0].length);
@@ -219,7 +220,8 @@
         counter.n += 1;
         return `<button type="button" class="ref" data-note="${counter.n - 1}" aria-label="注釈を読む">※</button>`;
       });
-    const cls = ['ln', 's' + (m[1] || 3), ALIGN[m[2]] || 'center'];
+    const size = Number(m[1] || 3);
+    const cls = ['ln', 's' + size, ALIGN[m[2]] || (size >= 5 ? 'center' : 'start')];
     if (fx.includes('*')) cls.push('shake');
     const drop = fx.includes('!') ? ' data-drop="stone"' : fx.includes('~') ? ' data-drop="sand"' : '';
     return `<p class="${cls.join(' ')}" style="--i:${Math.min(i, MAX_STAGGER)}"${drop}>${fill(html, true)}</p>`;
@@ -519,7 +521,7 @@
         if (!on) return;
         const dx = e.clientX - sx;
         const dy = e.clientY - sy;
-        tok.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.2}deg) scale(1.08)`;
+        tok.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.2}deg) scale(1.03)`;
         const z = hit(e.clientX, e.clientY);
         if (z !== over) {
           if (over) over.classList.remove('over');
@@ -1303,6 +1305,8 @@
     const p = pages[state.cur];
     const counter = { n: 0 };
     const lines = (p.text || []).filter(visible).map((l) => (typeof l === 'string' ? l : l.text));
+    while (lines[0] === '') lines.shift();
+    while (lines[lines.length - 1] === '') lines.pop();
     const list = currentChoices();
     const main = list.filter((c) => !c.alt);
     const alt = list.filter((c) => c.alt);
